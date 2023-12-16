@@ -1,0 +1,201 @@
+---
+title: "Data Analysis"
+author: "Cecily Zheng"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stats)
+library(reshape2)
+library(exactRankTests)
+library(kableExtra)
+library(qqplotr)
+```
+
+\newpage
+```{r group data, echo=FALSE}
+# data
+Generation <- c('F0', 'F1', 'F2', 'F3')
+Light_Females_w_ <- c(10, 5, 7, 4)
+Light_Males_w_ <- c(10, 16, 11, 14)
+Dark_Females_w_ <- c(10, 7, 10, 7)
+Dark_Males_w_ <- c(10, 14, 12, 16)
+Light_Females_wt <- c(10, 15, 13, 16)
+Light_Males_wt <- c(10, 4, 9, 6)
+Dark_Females_wt <- c(10, 13, 10, 13)
+Dark_Males_wt <- c(10, 6, 8, 4)
+Frequency_Light <- c(0.50, 0.80, 0.55, 0.70)
+Frequency_Dark <- c(0.50, 0.70, 0.60, 0.80)
+
+# phenotype frequencies
+df1 <- data.frame(
+  Generation, 
+  Light_Females_w_, 
+  Light_Males_w_, 
+  Dark_Females_w_, 
+  Dark_Males_w_, 
+  Light_Females_wt, 
+  Light_Males_wt, 
+  Dark_Females_wt, 
+  Dark_Males_wt)
+
+# allele frequencies
+df <- data.frame(Generation, Frequency_Light, Frequency_Dark)
+knitr::kable(df, booktabs = TRUE, caption = "Frequencies of White-eyed and Wild Type Alleles Across Generations")
+```
+
+```{r, class data, echo=FALSE}
+# import class data for F3 generation
+Fly_data <- read.csv("Fly_Data_F3_Class.csv")
+
+# Reformat datasheet for plotting
+Plotting_Data <- rbind( data.frame(Allele = "w-",
+                                   Treatment = "Dark",
+                                   Allele_frequency = Fly_data$Dark_Treatment_Frequency_for_white_eyed_Allele),
+                        data.frame(Allele = "w-",
+                                   Treatment = "Light",
+                                   Allele_frequency = Fly_data$
+Light_Treatment_Frequency_for_white_eyed_Allele))
+
+# Create a variable combining species and treatment
+Plotting_Data$Group <- as.factor(paste(Plotting_Data$Treatment,
+                                       Plotting_Data$Allele,
+                                       sep = " "))   
+```
+
+\newpage
+```{r descriptive statistics group, echo=FALSE}
+# group data
+df_long <- melt(df, id.vars = 'Generation')
+desc_stats <- df_long %>% 
+  group_by(variable) %>% 
+  summarise(mean = mean(value), 
+            sd = sd(value),
+            median = median(value),
+            min = min(value), 
+            max = max(value),
+            iqr = IQR(value)) %>%
+  ungroup() # Ensure this is called to avoid grouping in the final table output
+knitr::kable(desc_stats, booktabs = TRUE, caption = "Descriptive Statistics of Group Allele Frequencies") 
+```
+
+```{r descriptive statistics class, echo=FALSE}
+# class data
+summary_Plotting_Data <- Plotting_Data %>%
+  group_by(Group) %>%
+  summarize(
+    mean_allelefr = mean(Allele_frequency, na.rm = TRUE),
+    sd_allelefr = sd(Allele_frequency, na.rm = TRUE),
+    median_allelefr = median(Allele_frequency, na.rm = TRUE),
+    min_allelefr = min(Allele_frequency, na.rm = TRUE),
+    max_allelefr = max(Allele_frequency, na.rm = TRUE),
+    iqr_allelefr = IQR(Allele_frequency, na.rm = TRUE),
+    sample_size = n(),
+  )
+
+summary_Plotting_Data %>%
+  kbl(col.names = c("Treatment", "Mean", "Standard Deviation", "Median", "Minimum", "Maximum", "Interquartile Range", "Sample Size"),
+      align = 'c', caption = "Descriptive Statistics of Class F3 Allele Frequencies") %>%
+  kable_classic(full_width = F, html_font = "Cambria") 
+```
+
+```{r Plot Group, echo=FALSE}
+# Plotting a bar chart for allele frequency across generations
+df_long_stats <- df_long %>% 
+  left_join(desc_stats, by = "variable")
+
+# Plotting a boxplot for allele frequency comparison
+boxplot <- ggplot(df_long, aes(x = variable, y = value)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(x = 'Treatment', y = 'Frequency', 
+       caption = "Figure 1: Boxplot of Comparison of White-eyed Allele Frequencies in Light and Dark Conditions") +
+  theme(plot.caption = element_text(hjust = 0.5))
+print(boxplot)
+
+```
+
+```{r, Plot Class, echo=FALSE}
+# histograms used to view the distribution of data
+
+histogram <- ggplot(Plotting_Data, aes(x = Allele_frequency, fill = Group))+
+  geom_histogram(color = "#e9ecef", alpha = 0.6)+
+  facet_wrap(~Group)+
+  labs(x = "Average Allele Frequency",
+       y = "Count",
+       caption = "Figure 2: Histogram of Average White-eyed Allele Frequencies in Light and Dark Conditions") +
+  theme(plot.caption = element_text(hjust = 0.5))
+print(histogram)
+
+
+# box plot
+boxplot_class <- boxplot(Plotting_Data$Allele_frequency ~ Plotting_Data$Group,
+                         xlab = "Treatment",
+                         ylab = "Frequency",
+                         pch = 19)
+
+# Adding caption below the figure
+mtext("Figure 3: Boxplot of Fly White-eyed Allele Frequency Across Treatments", 
+      side = 1, line = 4, cex = 0.8)
+
+```
+# normality test
+
+A normal *QQ plot* is a scatter plot created by plotted two sets of quantiles against each other. Theoretical quantiles are plotted on the x-axis and the ordered values for our variable of interest are on the y-axis, If the points plotted on the graph lie on a straight line then we can say the data distribution is normal.
+
+*Shapiro-Wilk Normality Test* $\alpha = 0.05$, null hypothesis $H_0$: data follow normal distribution.
+
+```{r normality test, echo=FALSE}
+# Performing Shapiro-Wilk Normality Test
+
+# group data
+normality_light <- shapiro.test(df$Frequency_Light)
+normality_dark <- shapiro.test(df$Frequency_Dark)
+print(normality_light)
+print(normality_dark)
+# class data
+Plotting_Data %>%
+  group_by(Group) %>%
+  summarize('W Stat' = shapiro.test(Allele_frequency)$statistic,
+            p.value = shapiro.test(Allele_frequency)$p.value)
+
+# Performing qqplot on Class Data
+ggplot(data = Plotting_Data, mapping = aes(sample = Allele_frequency, color = Group, fill = Group))+
+  stat_qq_band(alpha = 0.5, conf = 0.95, qtype = 1, bandType = "boot") +
+  stat_qq_line(identity = TRUE) +
+  stat_qq_point(col = "black")+
+  facet_wrap(~Group, scales = "free") +
+  labs(x = "Theoretical Quantiles", 
+       y = "Sample Quantiles",
+       caption = "Figure 4: QQ-Plot") +  theme(plot.caption = element_text(hjust = 0.5))
+
+```
+
+# Mann-Whitney U Test
+
+*Mann-Whitney U Test* compare ranks (medians) between two unpaired samples. $\alpha = 0.05$, null hypothesis $H_0$: the distributions of the allele frequencies between treatments are equal.
+
+```{r Mann-Whitney U Test, echo=FALSE}
+# Performing Mann-Whitney U Test
+# group data
+mannwhitney_results <- wilcox.test(df$Frequency_Light, df$Frequency_Dark, na.rm = TRUE, conf.int = TRUE)
+print(mannwhitney_results) 
+
+# class data
+mwu_allelefrequency <- wilcox.test(Allele_frequency ~ Group, data = Plotting_Data, na.rm = TRUE, paired = FALSE, exact = FALSE, conf.int = TRUE)
+print(mwu_allelefrequency)
+```
+
+# t-test
+
+```{r T test, echo=FALSE}
+t_test_result <- t.test(df$Frequency_Light, df$Frequency_Dark, na.rm = TRUE)
+print(t_test_result)
+```
